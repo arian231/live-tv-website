@@ -1,0 +1,2421 @@
+
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>CodeCloudBD Stream — Fifa Worldcup Live Streaming</title>
+<meta name="theme-color" content="#060913">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+<style>
+:root {
+    --primary:     #00ffff;
+    --primary-dim: #00ffff22;
+    --bg-deep:  #060913;
+    --bg-panel: #0d1220;
+    --bg-card:  #111827;
+    --bg-hover: #1a2235;
+    --border:   #1e2d45;
+    --text:     #e2e8f0;
+    --text-muted:#6b7280;
+    --text-dim: #374151;
+    --radius:   10px;
+    --header-h: 54px;
+    --footer-h: 40px;
+    --sidebar-w:290px;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; }
+body { background: var(--bg-deep); color: var(--text); font-family: 'Inter', sans-serif; }
+a { text-decoration: none; color: inherit; }
+
+/* HEADER */
+.header { position: fixed; top: 0; left: 0; right: 0; height: var(--header-h); z-index: 200; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; background: var(--bg-panel); border-bottom: 1px solid var(--border); }
+.logo { display: flex; align-items: center; gap: 10px; }
+.logo img { height: 32px; object-fit: contain; }
+.logo-ball { font-size: 1.5rem; animation: spin-ball 4s linear infinite; display: inline-block; }
+@keyframes spin-ball { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+.logo-text { font-family: 'Rajdhani', sans-serif; font-size: 1.4rem; font-weight: 700; color: var(--primary); letter-spacing: 1px; }
+.logo-tag  { font-size: 0.6rem; color: var(--text-muted); letter-spacing: 2px; text-transform: uppercase; margin-top: -3px; }
+.header-right { display: flex; align-items: center; gap: 10px; }
+.live-badge { background: #ef4444; color: #fff; font-size: 0.62rem; font-weight: 700; padding: 3px 7px; border-radius: 4px; letter-spacing: 1px; animation: pulse-red 2s infinite; }
+@keyframes pulse-red { 0%,100%{opacity:1} 50%{opacity:.55} }
+.admin-link { font-size: 0.72rem; color: var(--text-muted); padding: 5px 11px; border: 1px solid var(--border); border-radius: 6px; transition: all .2s; }
+.admin-link:hover { color: var(--primary); border-color: var(--primary); }
+
+/* LAYOUT */
+.app-body { position: fixed; top: var(--header-h); bottom: var(--footer-h); left: 0; right: 0; display: flex; overflow: hidden; }
+.player-area { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow-y: auto; padding: 14px; }
+
+/* PLAYER WRAP — fullscreen target, all children visible in both modes */
+.player-wrap {
+    position: relative; width: 100%;
+    background: #000; border-radius: var(--radius);
+    aspect-ratio: 16/9;
+    border: 1px solid var(--border);
+    box-shadow: 0 0 40px rgba(0,0,0,.7);
+    flex-shrink: 0;
+    overflow: hidden;
+    cursor: pointer;
+}
+.player-wrap video { width: 100%; height: 100%; display: block; background: #000; }
+video::-webkit-media-controls-fullscreen-button { display: none !important; }
+/* fullscreen: fill screen */
+.player-wrap:-webkit-full-screen { width:100vw!important; height:100vh!important; aspect-ratio:unset!important; border-radius:0!important; }
+.player-wrap:-moz-full-screen    { width:100vw!important; height:100vh!important; aspect-ratio:unset!important; border-radius:0!important; }
+.player-wrap:fullscreen          { width:100vw!important; height:100vh!important; aspect-ratio:unset!important; border-radius:0!important; }
+
+/* LOADING OVERLAY */
+.loading-overlay { position: absolute; inset: 0; background: rgba(6,9,19,0.88); display: none; flex-direction: column; align-items: center; justify-content: center; gap: 14px; z-index: 10; border-radius: var(--radius); }
+.loading-overlay.show { display: flex; }
+.loading-logo { width: 72px; height: 72px; border-radius: 14px; object-fit: cover; border: 2px solid var(--border); animation: blink-logo 0.8s ease-in-out infinite; }
+@keyframes blink-logo { 0%,100%{opacity:1;transform:scale(1);box-shadow:0 0 0 0 var(--primary)} 50%{opacity:.4;transform:scale(.92);box-shadow:0 0 20px 4px var(--primary)} }
+.loading-ring { width: 90px; height: 90px; position: absolute; border-radius: 50%; border: 2px solid transparent; border-top-color: var(--primary); animation: spin-ring 1s linear infinite; }
+@keyframes spin-ring { to{transform:rotate(360deg)} }
+.loading-text { font-size: 0.78rem; color: var(--text-muted); letter-spacing: 1px; }
+
+/* =============================================
+   WATERMARK — v10
+   একদম screen edge: 8px margin
+   z-index: 30
+   Ad আসলে watermark ঢেকে যাবে (ad z-index: 40) — correct
+   Normal + Fullscreen দুই মোডেই কাজ করে
+============================================= */
+.watermark {
+    position: absolute;
+    pointer-events: none;
+    z-index: 30;
+    font-family: 'Rajdhani', sans-serif;
+    font-size: clamp(11px, 1.5vw, 15px);
+    font-weight: 700;
+    color: rgba(255,255,255,1.0);
+    text-shadow: 0 1px 8px rgba(0,0,0,1), 0 0 12px rgba(0,0,0,.9);
+    padding: 3px 10px;
+    background: rgba(0,0,0,0.5);
+    border-radius: 4px;
+    letter-spacing: 0.8px;
+    border: 1px solid rgba(255,255,255,0.12);
+    bottom:8px; left:8px;    display: block;
+}
+
+/* =============================================
+   AD OVERLAY — v10
+   position: absolute bottom:0 left:0 right:0
+   z-index: 40 — watermark (30) ও controls (25) এর উপরে
+   Normal + Fullscreen উভয় মোডেই কাজ করে
+============================================= */
+.player-ad {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    z-index: 40;
+    background: rgba(0,0,0,0.85);
+    border-top: 1px solid rgba(255,255,255,0.08);
+    display: none; flex-direction: column;
+    align-items: center;
+    padding: 5px 8px 6px;
+}
+.player-ad.show { display: flex; }
+.player-ad .ad-label { font-size: 0.55rem; color: rgba(255,255,255,0.3); letter-spacing: 2px; text-transform: uppercase; align-self: flex-start; margin-bottom: 3px; }
+.player-ad .ad-content { width: 100%; min-height: 50px; display: flex; align-items: center; justify-content: center; }
+.ad-countdown { position: absolute; top: 5px; right: 7px; background: rgba(0,0,0,0.6); color: rgba(255,255,255,0.4); font-size: 0.58rem; padding: 2px 7px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.08); }
+.ad-timer-bar { position: absolute; bottom: 0; left: 0; height: 2px; background: var(--primary); width: 100%; transform-origin: left; transition: none; }
+
+/* =============================================
+   CONTROLS OVERLAY — v10
+   Normal + Fullscreen দুই মোডেই কাজ করে
+   z-index: 25
+   5 সেকেন্ড idle এ hide, tap/click/move এ show
+   বাটন: Play/Pause (center) + FullScreen/Exit (bottom-right)
+============================================= */
+.ctrl-overlay {
+    position: absolute; inset: 0;
+    z-index: 25;
+    display: flex; flex-direction: column;
+    align-items: stretch; justify-content: space-between;
+    background: linear-gradient(to bottom, rgba(0,0,0,0.45) 0%, transparent 28%, transparent 62%, rgba(0,0,0,0.55) 100%);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.28s ease;
+}
+.ctrl-overlay.visible { opacity: 1; pointer-events: auto; }
+
+.ctrl-center { display: flex; align-items: center; justify-content: center; flex: 1; }
+.ctrl-playpause {
+    width: 58px; height: 58px; border-radius: 50%;
+    background: rgba(0,0,0,0.65); border: 2px solid rgba(255,255,255,0.55);
+    color: #fff; display: flex; align-items: center; justify-content: center;
+    cursor: pointer; transition: transform .15s, background .15s;
+    -webkit-tap-highlight-color: transparent;
+}
+.ctrl-playpause:hover { transform: scale(1.1); background: rgba(0,0,0,0.88); }
+.ctrl-playpause svg { width: 26px; height: 26px; fill: #fff; }
+
+.ctrl-bottom { display: flex; align-items: center; justify-content: flex-end; padding: 8px 10px 12px; gap: 6px; }
+.ctrl-btn {
+    background: rgba(0,0,0,0.65); border: 1px solid rgba(255,255,255,0.22);
+    border-radius: 6px; color: #fff; font-size: 0.7rem; padding: 5px 12px;
+    cursor: pointer; display: flex; align-items: center; gap: 5px;
+    transition: background .18s; white-space: nowrap;
+    -webkit-tap-highlight-color: transparent;
+}
+.ctrl-btn:hover { background: rgba(0,0,0,0.92); }
+.ctrl-btn svg { width: 13px; height: 13px; fill: currentColor; flex-shrink: 0; }
+
+/* EMPTY STATE */
+.player-overlay { position: absolute; inset: 0; border-radius: var(--radius); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; background: linear-gradient(135deg, #060913, #0d1a2e); z-index: 5; }
+.player-overlay .icon { font-size: 3.5rem; opacity: .2; }
+.player-overlay h3 { color: var(--text-muted); font-size: 1rem; font-weight: 400; }
+.player-overlay p  { color: var(--text-dim); font-size: 0.8rem; }
+
+/* NOW PLAYING */
+.now-playing { display: none; align-items: center; gap: 12px; background: var(--bg-panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 14px; margin-top: 10px; flex-shrink: 0; }
+.now-playing.visible { display: flex; }
+.np-logo { width: 42px; height: 42px; border-radius: 8px; object-fit: cover; background: var(--bg-card); flex-shrink: 0; border: 1px solid var(--border); }
+.np-info h4 { font-size: 0.9rem; font-weight: 600; }
+.np-info p  { font-size: 0.72rem; color: var(--text-muted); margin-top: 2px; }
+.np-live { margin-left: auto; background: #ef4444; color: #fff; font-size: 0.62rem; font-weight: 700; padding: 3px 8px; border-radius: 4px; letter-spacing: 1px; flex-shrink: 0; animation: pulse-red 2s infinite; }
+
+/* SIDEBAR */
+.sidebar { width: var(--sidebar-w); flex-shrink: 0; background: var(--bg-panel); border-left: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
+.sidebar-head { padding: 12px 14px 10px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.sidebar-head h3 { font-family: 'Rajdhani', sans-serif; font-size: 0.95rem; font-weight: 700; color: var(--primary); letter-spacing: 1px; }
+.search-wrap { position: relative; margin-top: 9px; }
+.search-wrap input { width: 100%; background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px 8px 32px; color: var(--text); font-size: 0.82rem; outline: none; transition: border-color .2s; }
+.search-wrap input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-dim); }
+.search-wrap input::placeholder { color: var(--text-muted); }
+.search-wrap .s-icon { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: .85rem; }
+.cat-tabs { display: flex; gap: 5px; padding: 8px 12px; border-bottom: 1px solid var(--border); overflow-x: auto; flex-wrap: nowrap; -webkit-overflow-scrolling: touch; scrollbar-width: none; flex-shrink: 0; }
+.cat-tabs::-webkit-scrollbar { display: none; }
+.cat-tab { font-size: 0.7rem; padding: 4px 11px; border: 1px solid var(--border); border-radius: 20px; cursor: pointer; transition: all .15s; color: var(--text-muted); background: transparent; white-space: nowrap; flex-shrink: 0; }
+.cat-tab:hover, .cat-tab.active { background: var(--primary); border-color: var(--primary); color: #000; font-weight: 600; }
+.channel-list { overflow-y: auto; flex: 1; padding: 6px; }
+.channel-list::-webkit-scrollbar { width: 3px; }
+.channel-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+.ch-item { display: flex; align-items: center; gap: 11px; padding: 9px 10px; border-radius: 8px; cursor: pointer; transition: background .12s, border-color .12s; border: 1px solid transparent; margin-bottom: 2px; user-select: none; }
+.ch-item:hover { background: var(--bg-hover); border-color: var(--border); }
+.ch-item.active { background: var(--primary-dim); border-color: var(--primary); }
+.ch-item.active .ch-name { color: var(--primary); }
+.ch-item.dragging { opacity: .4; }
+.ch-item.drag-over { border-color: var(--primary); background: var(--primary-dim); }
+.drag-handle { color: var(--text-dim); font-size: 0.9rem; cursor: grab; padding: 0 2px; flex-shrink: 0; }
+.drag-handle:active { cursor: grabbing; }
+.ch-logo { width: 40px; height: 40px; border-radius: 7px; object-fit: cover; background: var(--bg-card); flex-shrink: 0; border: 1px solid var(--border); }
+.ch-info { min-width: 0; flex: 1; }
+.ch-info .ch-name { font-size: 0.83rem; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ch-info .ch-cat  { font-size: 0.68rem; color: var(--text-muted); margin-top: 2px; }
+.ch-num { font-size: 0.68rem; color: var(--text-dim); font-weight: 600; flex-shrink: 0; }
+.no-results { text-align: center; padding: 30px 16px; color: var(--text-muted); font-size: 0.83rem; }
+
+/* FOOTER */
+footer { position: fixed; bottom: 0; left: 0; right: 0; height: var(--footer-h); z-index: 200; background: var(--bg-panel); border-top: 1px solid var(--border); padding: 0 18px; display: flex; align-items: center; justify-content: space-between; font-size: 0.7rem; color: var(--text-muted); gap: 8px; }
+footer .credit a { color: var(--primary); }
+.visit-stats { display: flex; gap: 8px; align-items: center; }
+.visit-badge { display: flex; align-items: center; gap: 5px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 20px; padding: 2px 10px; font-size: 0.68rem; }
+.dot-green { width: 6px; height: 6px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 6px #22c55e80; animation: pulse-green 2s infinite; }
+.dot-gold  { width: 6px; height: 6px; border-radius: 50%; background: var(--primary); }
+@keyframes pulse-green { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.5;transform:scale(.7)} }
+.visit-badge strong { color: var(--primary); }
+.ch-count { background: var(--bg-card); padding: 2px 10px; border-radius: 20px; border: 1px solid var(--border); }
+
+/* MOBILE */
+@media (max-width: 768px) {
+    :root { --header-h: 50px; --footer-h: 70px; }
+    .app-body { flex-direction: column; overflow: hidden; }
+    .player-area { flex: 0 0 auto; overflow: hidden; padding: 0; }
+    .player-wrap { border-radius: 0; border-left: none; border-right: none; border-top: none; width: 100%; }
+    .player-wrap video { border-radius: 0; }
+    .loading-overlay { border-radius: 0; }
+    .now-playing { margin: 0; border-radius: 0; border-left: none; border-right: none; border-top: none; border-bottom: 1px solid var(--border); padding: 8px 12px; }
+    .sidebar { width: 100%; border-left: none; border-top: 1px solid var(--border); flex: 1; overflow: hidden; min-height: 0; }
+    .channel-list { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; padding: 8px; overflow-y: auto; }
+    .ch-item { flex-direction: column; align-items: center; text-align: center; padding: 8px 4px; gap: 5px; }
+    .ch-logo { width: 44px; height: 44px; }
+    .ch-info .ch-name { font-size: 0.7rem; white-space: normal; line-height: 1.2; }
+    .ch-info .ch-cat, .ch-num, .drag-handle { display: none; }
+    footer { height: var(--footer-h); flex-wrap: wrap; align-content: center; gap: 4px; justify-content: center; padding: 6px 12px; }
+    footer .credit { width: 100%; text-align: center; font-size: 0.65rem; }
+    .visit-stats { justify-content: center; }
+    .ch-count { display: none; }
+    .admin-link span { display: none; }
+    .ctrl-playpause { width: 52px; height: 52px; }
+    .ctrl-btn { font-size: 0.68rem; padding: 6px 11px; }
+}
+@media (max-width: 400px) { .channel-list { grid-template-columns: repeat(2, 1fr); } }
+</style>
+</head>
+<body>
+
+<header class="header">
+    <div class="logo">
+                <span class="logo-ball">⚽</span>
+                <div>
+            <div class="logo-text">CodeCloudBD Stream</div>
+            <div class="logo-tag">Fifa Worldcup Live Streaming</div>
+        </div>
+    </div>
+    <div class="header-right">
+        <span class="live-badge">● LIVE</span>
+        <a href="admin/login.php" class="admin-link">⚙ <span>Admin</span></a>
+    </div>
+</header>
+
+<div class="app-body">
+    <div class="player-area">
+        <div class="player-wrap" id="playerWrap">
+
+            <!-- Empty state -->
+            <div class="player-overlay" id="playerOverlay">
+                <div class="icon">⚽</div>
+                <h3>চ্যানেল নির্বাচন করুন</h3>
+                <p>নিচের তালিকা থেকে একটি চ্যানেলে ট্যাপ করুন</p>
+            </div>
+
+            <!-- Loading -->
+            <div class="loading-overlay" id="loadingOverlay">
+                <div class="loading-ring"></div>
+                <img src="" id="loadingLogo" class="loading-logo" alt="">
+                <div class="loading-text">লোড হচ্ছে...</div>
+            </div>
+
+            <!-- Video -->
+            <video id="videoPlayer" playsinline webkit-playsinline></video>
+
+            <!-- ✅ CONTROLS OVERLAY — v10
+                 Normal + Fullscreen উভয় মোডে কাজ করে (playerWrap child)
+                 5 সেকেন্ড idle এ auto-hide, tap/click এ show
+            -->
+            <div class="ctrl-overlay" id="ctrlOverlay">
+                <div style="height:1px"></div><!-- top spacer -->
+                <!-- Play / Pause -->
+                <div class="ctrl-center">
+                    <button class="ctrl-playpause" id="btnPlayPause" onclick="togglePlayPause(event)">
+                        <svg id="iconPlay"  viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                        <svg id="iconPause" viewBox="0 0 24 24" style="display:none"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+                    </button>
+                </div>
+                <!-- Bottom bar: Fullscreen toggle -->
+                <div class="ctrl-bottom">
+                    <button class="ctrl-btn" id="btnFS" onclick="toggleFS(event)">
+                        <svg id="iconEnterFS" viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>
+                        <svg id="iconExitFS"  viewBox="0 0 24 24" style="display:none"><path d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z"/></svg>
+                        <span id="fsBtnText">FullScreen</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- ✅ WATERMARK — v10: screen edge (8px), z-index:30 -->
+                        <div class="watermark" id="wmLabel" style="bottom:8px; left:8px;">
+                CodeCloudBD Stream            </div>
+            
+            <!-- ✅ AD OVERLAY — v10: bottom:0, z-index:40 -->
+            
+        </div>
+
+        <!-- Now Playing Bar -->
+        <div class="now-playing" id="nowPlayingBar">
+            <img src="" alt="" class="np-logo" id="npLogo">
+            <div class="np-info">
+                <h4 id="npName">—</h4>
+                <p id="npCat">—</p>
+            </div>
+            <span class="np-live">● LIVE</span>
+        </div>
+    </div>
+
+    <!-- SIDEBAR -->
+    <div class="sidebar">
+        <div class="sidebar-head">
+            <h3>📡 CHANNELS (101)</h3>
+            <div class="search-wrap">
+                <span class="s-icon">🔍</span>
+                <input type="text" id="searchInput" placeholder="চ্যানেল খুঁজুন...">
+            </div>
+        </div>
+        <div class="cat-tabs" id="catTabs">
+            <button class="cat-tab active" data-cat="all">সব</button>
+                        <button class="cat-tab" data-cat="Bangladesh">Bangladesh</button>
+                        <button class="cat-tab" data-cat="Cartoon">Cartoon</button>
+                        <button class="cat-tab" data-cat="Documentary">Documentary</button>
+                        <button class="cat-tab" data-cat="Entertainment">Entertainment</button>
+                        <button class="cat-tab" data-cat="FIFA World Cup">FIFA World Cup</button>
+                        <button class="cat-tab" data-cat="Movies">Movies</button>
+                        <button class="cat-tab" data-cat="Music">Music</button>
+                        <button class="cat-tab" data-cat="News">News</button>
+                        <button class="cat-tab" data-cat="Pakistan">Pakistan</button>
+                        <button class="cat-tab" data-cat="Sports">Sports</button>
+                    </div>
+        <div class="channel-list" id="channelList">
+                        <div class="ch-item"
+                data-id="12305"
+                data-url="https://dfr80qz435crc.cloudfront.net/MNOP/Amagi/Caze/Caze_TV_BR/1080p-vtt/index.m3u8"
+                data-name="Caze Tv Brasil"
+                data-cat="FIFA World Cup"
+                data-logo="https://stream.codecloud.bd/uploads/logos/logo_6a2a39c4ac184.png"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://stream.codecloud.bd/uploads/logos/logo_6a2a39c4ac184.png"
+                     alt="Caze Tv Brasil" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">Caze Tv Brasil</div>
+                    <div class="ch-cat">FIFA World Cup</div>
+                </div>
+                <span class="ch-num">01</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12306"
+                data-url="https://dfr80qz435crc.cloudfront.net/MNOP/Amagi/Caze/Caze_TV_BR/Caze_TV.m3u8"
+                data-name="Caze Tv Server 2"
+                data-cat="FIFA World Cup"
+                data-logo="https://stream.codecloud.bd/uploads/logos/logo_6a2a3938aca1c.png"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://stream.codecloud.bd/uploads/logos/logo_6a2a3938aca1c.png"
+                     alt="Caze Tv Server 2" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">Caze Tv Server 2</div>
+                    <div class="ch-cat">FIFA World Cup</div>
+                </div>
+                <span class="ch-num">02</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12317"
+                data-url="https://37b4c228.wurl.com/manifest/f36d25e7e52f1ba8d7e56eb859c636563214f541/UmFrdXRlblRWLWZyX0ZJRkFQbHVzRnJlbmNoX0hMUw/6f5437c5-e015-4754-8476-c8c6d27d3a55/1.m3u8"
+                data-name="FIFA Plus B 🏆"
+                data-cat="Sports"
+                data-logo="https://i.ibb.co.com/vnbkF0r/fifa-world-cup-2026-logo-png-seeklogo-665644.png"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://i.ibb.co.com/vnbkF0r/fifa-world-cup-2026-logo-png-seeklogo-665644.png"
+                     alt="FIFA Plus B 🏆" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">FIFA Plus B 🏆</div>
+                    <div class="ch-cat">Sports</div>
+                </div>
+                <span class="ch-num">03</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12307"
+                data-url="https://amg01334-amg01334c2-freelivesports-emea-6791.playouts.now.amagi.tv/playlist/amg01334-beinxtra-beinxtrausapp-freelivesportsemea/playlist.m3u8"
+                data-name="Bein Sports XTRA"
+                data-cat="FIFA World Cup"
+                data-logo="https://stream.codecloud.bd/uploads/logos/logo_6a2a39fb56eec.jpeg"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://stream.codecloud.bd/uploads/logos/logo_6a2a39fb56eec.jpeg"
+                     alt="Bein Sports XTRA" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">Bein Sports XTRA</div>
+                    <div class="ch-cat">FIFA World Cup</div>
+                </div>
+                <span class="ch-num">04</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12318"
+                data-url="https://6c849fb3.wurl.com/master/f36d25e7e52f1ba8d7e56eb859c636563214f541/TEctbXhfRklGQVBsdXNTcGFuaXNoLTFfSExT/playlist.m3u8"
+                data-name="FIFA Plus 🇦🇷 Argentina"
+                data-cat="Sports"
+                data-logo="https://i.ibb.co.com/vnbkF0r/fifa-world-cup-2026-logo-png-seeklogo-665644.png"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://i.ibb.co.com/vnbkF0r/fifa-world-cup-2026-logo-png-seeklogo-665644.png"
+                     alt="FIFA Plus 🇦🇷 Argentina" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">FIFA Plus 🇦🇷 Argentina</div>
+                    <div class="ch-cat">Sports</div>
+                </div>
+                <span class="ch-num">05</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12308"
+                data-url="https://a62dad94.wurl.com/master/f36d25e7e52f1ba8d7e56eb859c636563214f541/UmFrdXRlblRWLWV1X0ZJRkFQbHVzRW5nbGlzaF9ITFM/playlist.m3u8"
+                data-name="FIFA+ English"
+                data-cat="FIFA World Cup"
+                data-logo="https://stream.codecloud.bd/uploads/logos/logo_6a2a3a4c03f4a.png"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://stream.codecloud.bd/uploads/logos/logo_6a2a3a4c03f4a.png"
+                     alt="FIFA+ English" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">FIFA+ English</div>
+                    <div class="ch-cat">FIFA World Cup</div>
+                </div>
+                <span class="ch-num">06</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12319"
+                data-url="https://37b4c228.wurl.com/master/f36d25e7e52f1ba8d7e56eb859c636563214f541/UmFrdXRlblRWLWZyX0ZJRkFQbHVzRnJlbmNoX0hMUw/playlist.m3u8"
+                data-name="FIFA Plus 🇫🇷 France"
+                data-cat="Sports"
+                data-logo="https://i.ibb.co.com/vnbkF0r/fifa-world-cup-2026-logo-png-seeklogo-665644.png"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://i.ibb.co.com/vnbkF0r/fifa-world-cup-2026-logo-png-seeklogo-665644.png"
+                     alt="FIFA Plus 🇫🇷 France" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">FIFA Plus 🇫🇷 France</div>
+                    <div class="ch-cat">Sports</div>
+                </div>
+                <span class="ch-num">07</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12309"
+                data-url="https://d63fabad.wurl.com/master/f36d25e7e52f1ba8d7e56eb859c636563214f541/UmFrdXRlblRWLWVzX0ZJRkFQbHVzU3BhbmlzaF9ITFM/playlist.m3u8"
+                data-name="FIFA+ Spain"
+                data-cat="FIFA World Cup"
+                data-logo="https://stream.codecloud.bd/uploads/logos/logo_6a2a3add7c408.png"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://stream.codecloud.bd/uploads/logos/logo_6a2a3add7c408.png"
+                     alt="FIFA+ Spain" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">FIFA+ Spain</div>
+                    <div class="ch-cat">FIFA World Cup</div>
+                </div>
+                <span class="ch-num">08</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12320"
+                data-url="https://4397879b.wurl.com/master/f36d25e7e52f1ba8d7e56eb859c636563214f541/UmFrdXRlblRWLWRlX0ZJRkFQbHVzR2VybWFuX0hMUw/playlist.m3u8"
+                data-name="FIFA Plus 🇩🇪 Germany"
+                data-cat="Sports"
+                data-logo="https://i.ibb.co.com/vnbkF0r/fifa-world-cup-2026-logo-png-seeklogo-665644.png"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://i.ibb.co.com/vnbkF0r/fifa-world-cup-2026-logo-png-seeklogo-665644.png"
+                     alt="FIFA Plus 🇩🇪 Germany" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">FIFA Plus 🇩🇪 Germany</div>
+                    <div class="ch-cat">Sports</div>
+                </div>
+                <span class="ch-num">09</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12310"
+                data-url="https://e3be9ac5.wurl.com/master/f36d25e7e52f1ba8d7e56eb859c636563214f541/TEctYnJfRklGQVBsdXNQb3J0dWd1ZXNlX0hMUw/playlist.m3u8"
+                data-name="FIFA+ Brazil"
+                data-cat="FIFA World Cup"
+                data-logo="https://stream.codecloud.bd/uploads/logos/logo_6a2a3b125db37.png"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://stream.codecloud.bd/uploads/logos/logo_6a2a3b125db37.png"
+                     alt="FIFA+ Brazil" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">FIFA+ Brazil</div>
+                    <div class="ch-cat">FIFA World Cup</div>
+                </div>
+                <span class="ch-num">10</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12321"
+                data-url="https://5d95f7d7.wurl.com/master/f36d25e7e52f1ba8d7e56eb859c636563214f541/UmFrdXRlblRWLWl0X0ZJRkFQbHVzSXRhbGlhbl9ITFM/playlist.m3u8"
+                data-name="FIFA Plus 🇮🇪 Itali"
+                data-cat="Sports"
+                data-logo="https://i.ibb.co.com/vnbkF0r/fifa-world-cup-2026-logo-png-seeklogo-665644.png"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://i.ibb.co.com/vnbkF0r/fifa-world-cup-2026-logo-png-seeklogo-665644.png"
+                     alt="FIFA Plus 🇮🇪 Itali" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">FIFA Plus 🇮🇪 Itali</div>
+                    <div class="ch-cat">Sports</div>
+                </div>
+                <span class="ch-num">11</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12311"
+                data-url="https://tv.topmediatv.net:25463/live/TopMediaWeb/bOteTR8ED1/108.m3u8"
+                data-name="ESPN 2"
+                data-cat="FIFA World Cup"
+                data-logo="https://stream.codecloud.bd/uploads/logos/logo_6a2a3b50397da.jpg"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://stream.codecloud.bd/uploads/logos/logo_6a2a3b50397da.jpg"
+                     alt="ESPN 2" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">ESPN 2</div>
+                    <div class="ch-cat">FIFA World Cup</div>
+                </div>
+                <span class="ch-num">12</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12312"
+                data-url="https://sm-monirul.top/toffee/play/somoy_tv.m3u8"
+                data-name="Somoy Tv"
+                data-cat="Bangladesh"
+                data-logo="https://stream.codecloud.bd/uploads/logos/logo_6a2a3badb5621.png"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://stream.codecloud.bd/uploads/logos/logo_6a2a3badb5621.png"
+                     alt="Somoy Tv" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">Somoy Tv</div>
+                    <div class="ch-cat">Bangladesh</div>
+                </div>
+                <span class="ch-num">13</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12316"
+                data-url="https://tvsen6.aynaott.com/somoytv/index.m3u8"
+                data-name="Somoy Tv Server 2"
+                data-cat="Bangladesh"
+                data-logo="https://stream.codecloud.bd/uploads/logos/logo_6a2a3c6c0f9b5.png"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://stream.codecloud.bd/uploads/logos/logo_6a2a3c6c0f9b5.png"
+                     alt="Somoy Tv Server 2" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">Somoy Tv Server 2</div>
+                    <div class="ch-cat">Bangladesh</div>
+                </div>
+                <span class="ch-num">14</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12314"
+                data-url="https://tvsen7.aynaott.com/tsports-hd/index.m3u8"
+                data-name="T Sports HD"
+                data-cat="Bangladesh"
+                data-logo="https://stream.codecloud.bd/uploads/logos/logo_6a2a3c3cf15b8.png"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://stream.codecloud.bd/uploads/logos/logo_6a2a3c3cf15b8.png"
+                     alt="T Sports HD" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">T Sports HD</div>
+                    <div class="ch-cat">Bangladesh</div>
+                </div>
+                <span class="ch-num">15</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12455"
+                data-url="https://tvsen7.aynaott.com/tsports-hd/tracks-v1a1/mono.ts.m3u8"
+                data-name="T Sports HD Server 2"
+                data-cat="Bangladesh"
+                data-logo="https://stream.codecloud.bd/uploads/logos/logo_6a2a4a6f551f8.png"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://stream.codecloud.bd/uploads/logos/logo_6a2a4a6f551f8.png"
+                     alt="T Sports HD Server 2" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">T Sports HD Server 2</div>
+                    <div class="ch-cat">Bangladesh</div>
+                </div>
+                <span class="ch-num">16</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12420"
+                data-url="https://app24.jagobd.com.bd/c3VydmVyX8RpbEU9Mi8xNy8yMFDEEHGcfRgzQ6NTAgdEoaeFzbF92YWxIZTO0U0ezN1IzMyfvcEdsEfeDeKiNkVN3PTOmdFseWRtaW51aiPhnPTI2/channel1bd.stream/tracks-v1a1/mono.m3u8"
+                data-name="Channel 1 TV"
+                data-cat="Bangladesh"
+                data-logo="https://i.ibb.co.com/N6HbH5rH/Channel-One-TV.png"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://i.ibb.co.com/N6HbH5rH/Channel-One-TV.png"
+                     alt="Channel 1 TV" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">Channel 1 TV</div>
+                    <div class="ch-cat">Bangladesh</div>
+                </div>
+                <span class="ch-num">17</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12456"
+                data-url="https://tvsen7.aynaott.com/tsports-hd/index.m3u8"
+                data-name="T Sports HD Server 3"
+                data-cat="Bangladesh"
+                data-logo="https://stream.codecloud.bd/uploads/logos/logo_6a2a4a8e28569.png"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://stream.codecloud.bd/uploads/logos/logo_6a2a4a8e28569.png"
+                     alt="T Sports HD Server 3" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">T Sports HD Server 3</div>
+                    <div class="ch-cat">Bangladesh</div>
+                </div>
+                <span class="ch-num">18</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12322"
+                data-url="https://d2w9q46ikgrcwx.cloudfront.net/v1/master/3722c60a815c199d9c0ef36c5b73da68a62b09d1/cc-of5cbk3sav3w5/v1/sysdata_s_p_a_fifa_7/samsungheadend_us/latest/main/hls/playlist.m3u8"
+                data-name="FIFA Plus 🇺🇸 USA"
+                data-cat="Sports"
+                data-logo="https://i.ibb.co.com/vnbkF0r/fifa-world-cup-2026-logo-png-seeklogo-665644.png"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://i.ibb.co.com/vnbkF0r/fifa-world-cup-2026-logo-png-seeklogo-665644.png"
+                     alt="FIFA Plus 🇺🇸 USA" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">FIFA Plus 🇺🇸 USA</div>
+                    <div class="ch-cat">Sports</div>
+                </div>
+                <span class="ch-num">19</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12313"
+                data-url="https://tvsen5.aynaott.com/PtvSports/index.m3u8?e=1779283784&amp;u=78be6644-0a65-48ec-81a4-089ac65a2619&amp;token=db1789e36c278bf538489fac263e0ffb"
+                data-name="Ptv Sports"
+                data-cat="Pakistan"
+                data-logo="https://stream.codecloud.bd/uploads/logos/logo_6a2a3bdf4d3da.jpg"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://stream.codecloud.bd/uploads/logos/logo_6a2a3bdf4d3da.jpg"
+                     alt="Ptv Sports" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">Ptv Sports</div>
+                    <div class="ch-cat">Pakistan</div>
+                </div>
+                <span class="ch-num">20</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12324"
+                data-url="https://amg26268-amg26268c14-freelivesports-emea-10267.playouts.now.amagi.tv/ts-us-e2-n2/playlist/amg26268-sportsstudio-tycsports-freelivesportsemea/playlist.m3u8"
+                data-name="Tyc Sports 🇦🇷 Argentina"
+                data-cat="Sports"
+                data-logo="https://imglink.cc/cdn/1oSRQnyUqK.jpg"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://imglink.cc/cdn/1oSRQnyUqK.jpg"
+                     alt="Tyc Sports 🇦🇷 Argentina" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">Tyc Sports 🇦🇷 Argentina</div>
+                    <div class="ch-cat">Sports</div>
+                </div>
+                <span class="ch-num">21</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12323"
+                data-url="https://tvsen7.aynaott.com/foxsports2/index.m3u8?e=1779283790&amp;amp;u=78be6644-0a65-48ec-81a4-089ac65a2619&amp;amp;token=cbb7f40b4af7be51a91e0629a5ac7238"
+                data-name="Fox Sports 2 - (FIFA)"
+                data-cat="Sports"
+                data-logo="https://imglink.cc/cdn/o5BoWU_BEz.png"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://imglink.cc/cdn/o5BoWU_BEz.png"
+                     alt="Fox Sports 2 - (FIFA)" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">Fox Sports 2 - (FIFA)</div>
+                    <div class="ch-cat">Sports</div>
+                </div>
+                <span class="ch-num">22</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12315"
+                data-url="https://tvsen6.aynaott.com/btvhd/index.m3u8"
+                data-name="Btv"
+                data-cat="Bangladesh"
+                data-logo="https://stream.codecloud.bd/uploads/logos/logo_6a2a3c575ce13.png"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://stream.codecloud.bd/uploads/logos/logo_6a2a3c575ce13.png"
+                     alt="Btv" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">Btv</div>
+                    <div class="ch-cat">Bangladesh</div>
+                </div>
+                <span class="ch-num">23</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12356"
+                data-url="https://bein-esp-xumo.amagi.tv/playlistR1080p.m3u8"
+                data-name="Bein Sports 4"
+                data-cat="Sports"
+                data-logo="https://imglink.cc/cdn/kIiut6WBq0.jpg"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://imglink.cc/cdn/kIiut6WBq0.jpg"
+                     alt="Bein Sports 4" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">Bein Sports 4</div>
+                    <div class="ch-cat">Sports</div>
+                </div>
+                <span class="ch-num">24</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12357"
+                data-url="https://bein-esp-xumo.amagi.tv/playlistR720P.m3u8"
+                data-name="beIN Sports Xtra"
+                data-cat="Sports"
+                data-logo="https://imglink.cc/cdn/kIiut6WBq0.jpg"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://imglink.cc/cdn/kIiut6WBq0.jpg"
+                     alt="beIN Sports Xtra" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">beIN Sports Xtra</div>
+                    <div class="ch-cat">Sports</div>
+                </div>
+                <span class="ch-num">25</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12358"
+                data-url="https://andro.226503.xyz/checklist/androstreamlivebs1.m3u8"
+                data-name="Bein Sports 1"
+                data-cat="Sports"
+                data-logo="https://imglink.cc/cdn/kIiut6WBq0.jpg"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://imglink.cc/cdn/kIiut6WBq0.jpg"
+                     alt="Bein Sports 1" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">Bein Sports 1</div>
+                    <div class="ch-cat">Sports</div>
+                </div>
+                <span class="ch-num">26</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12359"
+                data-url="https://andro.226503.xyz/checklist/androstreamlivebs2.m3u8"
+                data-name="Bein Sports 2"
+                data-cat="Sports"
+                data-logo="https://imglink.cc/cdn/kIiut6WBq0.jpg"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://imglink.cc/cdn/kIiut6WBq0.jpg"
+                     alt="Bein Sports 2" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">Bein Sports 2</div>
+                    <div class="ch-cat">Sports</div>
+                </div>
+                <span class="ch-num">27</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12360"
+                data-url="https://andro.226503.xyz/checklist/androstreamlivebs3.m3u8"
+                data-name="Bein Sports 3"
+                data-cat="Sports"
+                data-logo="https://imglink.cc/cdn/kIiut6WBq0.jpg"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://imglink.cc/cdn/kIiut6WBq0.jpg"
+                     alt="Bein Sports 3" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">Bein Sports 3</div>
+                    <div class="ch-cat">Sports</div>
+                </div>
+                <span class="ch-num">28</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12361"
+                data-url="https://andro.226503.xyz/checklist/androstreamlivebs4.m3u8"
+                data-name="Bein Sports 4"
+                data-cat="Sports"
+                data-logo="https://imglink.cc/cdn/kIiut6WBq0.jpg"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://imglink.cc/cdn/kIiut6WBq0.jpg"
+                     alt="Bein Sports 4" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">Bein Sports 4</div>
+                    <div class="ch-cat">Sports</div>
+                </div>
+                <span class="ch-num">29</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12364"
+                data-url="https://stream.ottplus.bd/live/euro_sports_hd_abr/live/euro_sports_hd/chunks.m3u8"
+                data-name="Euro TV"
+                data-cat="Sports"
+                data-logo="https://imglink.cc/cdn/SZphbKsSMx.png"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://imglink.cc/cdn/SZphbKsSMx.png"
+                     alt="Euro TV" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">Euro TV</div>
+                    <div class="ch-cat">Sports</div>
+                </div>
+                <span class="ch-num">30</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12365"
+                data-url="https://tvsen7.aynaott.com/sspts1/tracks-v1a1/mono.ts.m3u8"
+                data-name="Star Sports 1"
+                data-cat="Sports"
+                data-logo="https://imglink.cc/cdn/va7WOdXDQC.jpg"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://imglink.cc/cdn/va7WOdXDQC.jpg"
+                     alt="Star Sports 1" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">Star Sports 1</div>
+                    <div class="ch-cat">Sports</div>
+                </div>
+                <span class="ch-num">31</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12366"
+                data-url="https://tvsen7.aynaott.com/sspts1/index.m3u8"
+                data-name="Star Sports 1 B"
+                data-cat="Sports"
+                data-logo="https://imglink.cc/cdn/va7WOdXDQC.jpg"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://imglink.cc/cdn/va7WOdXDQC.jpg"
+                     alt="Star Sports 1 B" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">Star Sports 1 B</div>
+                    <div class="ch-cat">Sports</div>
+                </div>
+                <span class="ch-num">32</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12367"
+                data-url="https://streams2.sofast.tv/ptnr-yupptv/title-cricketgold/v1/manifest/611d79b11b77e2f571934fd80ca1413453772ac7/b2048bb8-1686-4432-aa50-647245383e0c/bfc6a36e-c250-4afe-b6c9-2bc57855bb7d/4.m3u8"
+                data-name="Cricket Gold"
+                data-cat="Sports"
+                data-logo="https://imglink.cc/cdn/HMfImxTUXS.jpg"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://imglink.cc/cdn/HMfImxTUXS.jpg"
+                     alt="Cricket Gold" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">Cricket Gold</div>
+                    <div class="ch-cat">Sports</div>
+                </div>
+                <span class="ch-num">33</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12369"
+                data-url="https://tvsen6.aynaott.com/asports/index.m3u8"
+                data-name="ASports"
+                data-cat="Sports"
+                data-logo="https://imglink.cc/cdn/d4W6mvjalX.png"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://imglink.cc/cdn/d4W6mvjalX.png"
+                     alt="ASports" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">ASports</div>
+                    <div class="ch-cat">Sports</div>
+                </div>
+                <span class="ch-num">34</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12370"
+                data-url="https://tvsen5.aynaott.com/PtvSports/index.m3u8"
+                data-name="PTV Sports (FIFA)"
+                data-cat="Sports"
+                data-logo="https://imglink.cc/cdn/wHhztDDZrU.png"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://imglink.cc/cdn/wHhztDDZrU.png"
+                     alt="PTV Sports (FIFA)" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">PTV Sports (FIFA)</div>
+                    <div class="ch-cat">Sports</div>
+                </div>
+                <span class="ch-num">35</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12374"
+                data-url="https://yupptvcatchupire.yuppcdn.net/preview/starjalsha/1800.m3u8"
+                data-name="Star Jalsha"
+                data-cat="Entertainment"
+                data-logo="https://imglink.cc/cdn/3TXPVSGzx5.png"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://imglink.cc/cdn/3TXPVSGzx5.png"
+                     alt="Star Jalsha" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">Star Jalsha</div>
+                    <div class="ch-cat">Entertainment</div>
+                </div>
+                <span class="ch-num">36</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12379"
+                data-url="https://vods2.aynaott.com/gseriesDrama/tracks-v1a1/mono.ts.m3u8"
+                data-name="G Series Drama"
+                data-cat="Entertainment"
+                data-logo="https://imglink.cc/cdn/1_dUKmt1Oe.png"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://imglink.cc/cdn/1_dUKmt1Oe.png"
+                     alt="G Series Drama" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">G Series Drama</div>
+                    <div class="ch-cat">Entertainment</div>
+                </div>
+                <span class="ch-num">37</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12380"
+                data-url="https://srknowapp.ncare.live/srktvhlswodrm/srktv.stream/playlist.m3u8"
+                data-name="SRK Tv"
+                data-cat="Entertainment"
+                data-logo="https://imglink.cc/cdn/uZtiXpPz29.png"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://imglink.cc/cdn/uZtiXpPz29.png"
+                     alt="SRK Tv" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">SRK Tv</div>
+                    <div class="ch-cat">Entertainment</div>
+                </div>
+                <span class="ch-num">38</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12381"
+                data-url="https://cdn-2.pishow.tv/live/1459/master.m3u8"
+                data-name="Goldmines"
+                data-cat="Movies"
+                data-logo="https://imglink.cc/cdn/E86bN6IAxl.jpg"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://imglink.cc/cdn/E86bN6IAxl.jpg"
+                     alt="Goldmines" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">Goldmines</div>
+                    <div class="ch-cat">Movies</div>
+                </div>
+                <span class="ch-num">39</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12382"
+                data-url="https://cdn-2.pishow.tv/live/1461/master.m3u8"
+                data-name="Goldmines Movies"
+                data-cat="Movies"
+                data-logo="https://imglink.cc/cdn/E86bN6IAxl.jpg"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://imglink.cc/cdn/E86bN6IAxl.jpg"
+                     alt="Goldmines Movies" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">Goldmines Movies</div>
+                    <div class="ch-cat">Movies</div>
+                </div>
+                <span class="ch-num">40</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12383"
+                data-url="https://tvsen6.aynaott.com/GoldminesBollywood/index.m3u8"
+                data-name="Goldmines Bollywood"
+                data-cat="Movies"
+                data-logo="https://imglink.cc/cdn/E86bN6IAxl.jpg"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://imglink.cc/cdn/E86bN6IAxl.jpg"
+                     alt="Goldmines Bollywood" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">Goldmines Bollywood</div>
+                    <div class="ch-cat">Movies</div>
+                </div>
+                <span class="ch-num">41</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12384"
+                data-url="http://198.195.239.50:8095/JalshaMovies/tracks-v1a1/mono.m3u8"
+                data-name="Jalsha Movies"
+                data-cat="Movies"
+                data-logo="https://imglink.cc/cdn/hEzUhoTW3x.jpg"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://imglink.cc/cdn/hEzUhoTW3x.jpg"
+                     alt="Jalsha Movies" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">Jalsha Movies</div>
+                    <div class="ch-cat">Movies</div>
+                </div>
+                <span class="ch-num">42</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12385"
+                data-url="https://vods2.aynaott.com/hindimovies/index.m3u8"
+                data-name="Hindi Classic 24"
+                data-cat="Movies"
+                data-logo="https://imglink.cc/cdn/cScI5tEUjV.png"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://imglink.cc/cdn/cScI5tEUjV.png"
+                     alt="Hindi Classic 24" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">Hindi Classic 24</div>
+                    <div class="ch-cat">Movies</div>
+                </div>
+                <span class="ch-num">43</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12386"
+                data-url="https://live20.bozztv.com/giatvplayout7/giatv-209593/tracks-v1a1/mono.ts.m3u8"
+                data-name="South India Movie"
+                data-cat="Movies"
+                data-logo="https://imglink.cc/cdn/cScI5tEUjV.png"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://imglink.cc/cdn/cScI5tEUjV.png"
+                     alt="South India Movie" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">South India Movie</div>
+                    <div class="ch-cat">Movies</div>
+                </div>
+                <span class="ch-num">44</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12387"
+                data-url="https://amg00877-b4unew-amg00877c2-xiaomi-in-5489.playouts.now.amagi.tv/playlist.m3u8"
+                data-name="B4U Movies"
+                data-cat="Movies"
+                data-logo="https://imglink.cc/cdn/cScI5tEUjV.png"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://imglink.cc/cdn/cScI5tEUjV.png"
+                     alt="B4U Movies" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">B4U Movies</div>
+                    <div class="ch-cat">Movies</div>
+                </div>
+                <span class="ch-num">45</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12388"
+                data-url="https://cdn-apse1-prod.tsv2.amagi.tv/linear/amg01076-lightningintern-actionhollywood-samsungnz/playlist.m3u8"
+                data-name="Action Hollywood"
+                data-cat="Movies"
+                data-logo="https://imglink.cc/cdn/cScI5tEUjV.png"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://imglink.cc/cdn/cScI5tEUjV.png"
+                     alt="Action Hollywood" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">Action Hollywood</div>
+                    <div class="ch-cat">Movies</div>
+                </div>
+                <span class="ch-num">46</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12389"
+                data-url="https://edge2.roarzone.net:8447/roarzone/edge3/sony_max_hd/index.m3u8?token=0acbc3381f074f74cd7db448c566c55fe7592a3c-efc9e16855524918b6a0e514aaddd012-1781061322-1781050522"
+                data-name="Song Max"
+                data-cat="Movies"
+                data-logo="https://imglink.cc/cdn/4mRBs1A-x_.png"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://imglink.cc/cdn/4mRBs1A-x_.png"
+                     alt="Song Max" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">Song Max</div>
+                    <div class="ch-cat">Movies</div>
+                </div>
+                <span class="ch-num">47</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12390"
+                data-url="https://edge2.roarzone.net:8447/roarzone/edge3/sonymax_2/index.m3u8?token=1ae6cc9578f7e8a9fbeb42b32a9ea6e19c246ec6-aa37a828978035cc1450f0721cf5f067-1781061322-1781050522"
+                data-name="Sony Max 2"
+                data-cat="Movies"
+                data-logo="https://imglink.cc/cdn/4mRBs1A-x_.png"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://imglink.cc/cdn/4mRBs1A-x_.png"
+                     alt="Sony Max 2" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">Sony Max 2</div>
+                    <div class="ch-cat">Movies</div>
+                </div>
+                <span class="ch-num">48</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12391"
+                data-url="http://198.195.239.50:8095/StarGold/index.m3u8"
+                data-name="Star Gold"
+                data-cat="Movies"
+                data-logo="https://imglink.cc/cdn/Nkj7hqlPz-.jpg"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://imglink.cc/cdn/Nkj7hqlPz-.jpg"
+                     alt="Star Gold" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">Star Gold</div>
+                    <div class="ch-cat">Movies</div>
+                </div>
+                <span class="ch-num">49</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12392"
+                data-url="https://wiselp.wiseplayout.com/9X_Tashan/master.m3u8"
+                data-name="9X Tashan"
+                data-cat="Music"
+                data-logo="https://imglink.cc/cdn/IYDn_LwwiV.png"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://imglink.cc/cdn/IYDn_LwwiV.png"
+                     alt="9X Tashan" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">9X Tashan</div>
+                    <div class="ch-cat">Music</div>
+                </div>
+                <span class="ch-num">50</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12393"
+                data-url="https://wiselp.wiseplayout.com/9X_Jalwa/master.m3u8"
+                data-name="9X Jalwa"
+                data-cat="Music"
+                data-logo="https://imglink.cc/cdn/IYDn_LwwiV.png"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://imglink.cc/cdn/IYDn_LwwiV.png"
+                     alt="9X Jalwa" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">9X Jalwa</div>
+                    <div class="ch-cat">Music</div>
+                </div>
+                <span class="ch-num">51</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12394"
+                data-url="https://wiselp.wiseplayout.com/9X_Jhakaas/master.m3u8"
+                data-name="9X Jhakaas"
+                data-cat="Music"
+                data-logo="https://imglink.cc/cdn/IYDn_LwwiV.png"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://imglink.cc/cdn/IYDn_LwwiV.png"
+                     alt="9X Jhakaas" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">9X Jhakaas</div>
+                    <div class="ch-cat">Music</div>
+                </div>
+                <span class="ch-num">52</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12395"
+                data-url="https://cdn-4.pishow.tv/live/1143/master.m3u8"
+                data-name="Sangeet Bangla"
+                data-cat="Music"
+                data-logo="https://imglink.cc/cdn/LmVOSdl3ku.png"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://imglink.cc/cdn/LmVOSdl3ku.png"
+                     alt="Sangeet Bangla" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">Sangeet Bangla</div>
+                    <div class="ch-cat">Music</div>
+                </div>
+                <span class="ch-num">53</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12396"
+                data-url="https://tplay.live/originals/bengali-beats/index.m3u8"
+                data-name="Bengali Beat"
+                data-cat="Music"
+                data-logo="https://imglink.cc/cdn/IYDn_LwwiV.png"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://imglink.cc/cdn/IYDn_LwwiV.png"
+                     alt="Bengali Beat" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">Bengali Beat</div>
+                    <div class="ch-cat">Music</div>
+                </div>
+                <span class="ch-num">54</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12397"
+                data-url="https://albportal.net/albkanalemusic.m3u8"
+                data-name="Albania Music"
+                data-cat="Music"
+                data-logo="https://imglink.cc/cdn/IYDn_LwwiV.png"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://imglink.cc/cdn/IYDn_LwwiV.png"
+                     alt="Albania Music" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">Albania Music</div>
+                    <div class="ch-cat">Music</div>
+                </div>
+                <span class="ch-num">55</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12398"
+                data-url="https://nomawnoijl.gpcdn.net/akash/partyuniverse/chunks.m3u8"
+                data-name="Party Universe"
+                data-cat="Music"
+                data-logo="https://imglink.cc/cdn/IYDn_LwwiV.png"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://imglink.cc/cdn/IYDn_LwwiV.png"
+                     alt="Party Universe" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">Party Universe</div>
+                    <div class="ch-cat">Music</div>
+                </div>
+                <span class="ch-num">56</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12399"
+                data-url="https://nomawnoijl.gpcdn.net/akash/partyuniverse/playlist.m3u8"
+                data-name="Party Universe B"
+                data-cat="Music"
+                data-logo="https://imglink.cc/cdn/IYDn_LwwiV.png"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://imglink.cc/cdn/IYDn_LwwiV.png"
+                     alt="Party Universe B" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">Party Universe B</div>
+                    <div class="ch-cat">Music</div>
+                </div>
+                <span class="ch-num">57</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12400"
+                data-url="https://live20.bozztv.com/giatvplayout7/giatv-209622/tracks-v1a1/mono.ts.m3u8"
+                data-name="Motu Patlu"
+                data-cat="Cartoon"
+                data-logo="https://imglink.cc/cdn/TxPUulKGQh.jpg"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://imglink.cc/cdn/TxPUulKGQh.jpg"
+                     alt="Motu Patlu" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">Motu Patlu</div>
+                    <div class="ch-cat">Cartoon</div>
+                </div>
+                <span class="ch-num">58</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12401"
+                data-url="https://live20.bozztv.com/giatvplayout7/giatv-208314/tracks-v1a1/mono.ts.m3u8"
+                data-name="Tom &amp; Jerry TV"
+                data-cat="Cartoon"
+                data-logo="https://imglink.cc/cdn/YkXRQgC4-_.jpg"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://imglink.cc/cdn/YkXRQgC4-_.jpg"
+                     alt="Tom &amp; Jerry TV" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">Tom &amp; Jerry TV</div>
+                    <div class="ch-cat">Cartoon</div>
+                </div>
+                <span class="ch-num">59</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12402"
+                data-url="https://live20.bozztv.com/giatvplayout7/giatv-209869/tracks-v1a1/mono.ts.m3u8"
+                data-name="Bantul The Great"
+                data-cat="Cartoon"
+                data-logo="https://imglink.cc/cdn/_OIh6UYTpa.jpg"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://imglink.cc/cdn/_OIh6UYTpa.jpg"
+                     alt="Bantul The Great" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">Bantul The Great</div>
+                    <div class="ch-cat">Cartoon</div>
+                </div>
+                <span class="ch-num">60</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12403"
+                data-url="http://103.204.43.87:8080/live/1/1/275.m3u8"
+                data-name="Nick Bangla"
+                data-cat="Cartoon"
+                data-logo="https://imglink.cc/cdn/XRDlkFnTFb.jpg"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://imglink.cc/cdn/XRDlkFnTFb.jpg"
+                     alt="Nick Bangla" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">Nick Bangla</div>
+                    <div class="ch-cat">Cartoon</div>
+                </div>
+                <span class="ch-num">61</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12404"
+                data-url="http://103.204.43.87:8080/live/1/1/274.m3u8"
+                data-name="Sonic Bangla"
+                data-cat="Cartoon"
+                data-logo="https://imglink.cc/cdn/G2BnUli8dP.png"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://imglink.cc/cdn/G2BnUli8dP.png"
+                     alt="Sonic Bangla" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">Sonic Bangla</div>
+                    <div class="ch-cat">Cartoon</div>
+                </div>
+                <span class="ch-num">62</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12405"
+                data-url="https://live20.bozztv.com/giatvplayout7/giatv-209902/tracks-v1a1/mono.ts.m3u8"
+                data-name="Doraemon TV"
+                data-cat="Cartoon"
+                data-logo="https://imglink.cc/cdn/rmNeL8f6NR.png"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://imglink.cc/cdn/rmNeL8f6NR.png"
+                     alt="Doraemon TV" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">Doraemon TV</div>
+                    <div class="ch-cat">Cartoon</div>
+                </div>
+                <span class="ch-num">63</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12406"
+                data-url="https://live20.bozztv.com/giatvplayout7/giatv-210728/tracks-v1a1/mono.ts.m3u8"
+                data-name="Oggy and the Cockroaches"
+                data-cat="Cartoon"
+                data-logo="https://imglink.cc/cdn/cZxNWhHkaZ.jpg"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://imglink.cc/cdn/cZxNWhHkaZ.jpg"
+                     alt="Oggy and the Cockroaches" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">Oggy and the Cockroaches</div>
+                    <div class="ch-cat">Cartoon</div>
+                </div>
+                <span class="ch-num">64</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12407"
+                data-url="https://amg00627-amg00627c29-rakuten-it-3989.playouts.now.amagi.tv/playlist/amg00627-banijayfast-mrbeanitcc-rakutenit/playlist.m3u8"
+                data-name="Mr Bean Animated"
+                data-cat="Cartoon"
+                data-logo="https://i.ibb.co.com/XfqV4B56/png-transparent-mr-bean-illustration-youtube-coloring-book-character-cartoon-mr-bean-television-chil.png"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://i.ibb.co.com/XfqV4B56/png-transparent-mr-bean-illustration-youtube-coloring-book-character-cartoon-mr-bean-television-chil.png"
+                     alt="Mr Bean Animated" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">Mr Bean Animated</div>
+                    <div class="ch-cat">Cartoon</div>
+                </div>
+                <span class="ch-num">65</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12408"
+                data-url="https://tvsen5.aynaott.com/cartoonnetwork/tracks-v1a1/mono.ts.m3u8"
+                data-name="Cartoon Network"
+                data-cat="Cartoon"
+                data-logo="https://imglink.cc/cdn/48br-Lpr61.png"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://imglink.cc/cdn/48br-Lpr61.png"
+                     alt="Cartoon Network" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">Cartoon Network</div>
+                    <div class="ch-cat">Cartoon</div>
+                </div>
+                <span class="ch-num">66</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12409"
+                data-url="https://live20.bozztv.com/giatvplayout7/giatv-209611/tracks-v1a1/mono.ts.m3u8"
+                data-name="Gopal Bhar TV"
+                data-cat="Cartoon"
+                data-logo="https://i.ibb.co.com/5xSF5mzh/Gopal-Bhar-animated-TV-series-title-card.jpg"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://i.ibb.co.com/5xSF5mzh/Gopal-Bhar-animated-TV-series-title-card.jpg"
+                     alt="Gopal Bhar TV" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">Gopal Bhar TV</div>
+                    <div class="ch-cat">Cartoon</div>
+                </div>
+                <span class="ch-num">67</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12410"
+                data-url="https://tvsen6.aynaott.com/durontotv-live/index.m3u8?e=1779283757&amp;u=78be6644-0a65-48ec-81a4-089ac65a2619&amp;token=3da514e08a15c80daed60a18b3f423fa"
+                data-name="Duronto Live"
+                data-cat="Cartoon"
+                data-logo="https://i.ibb.co.com/Ld3Yw0PH/Duronto-TV.png"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://i.ibb.co.com/Ld3Yw0PH/Duronto-TV.png"
+                     alt="Duronto Live" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">Duronto Live</div>
+                    <div class="ch-cat">Cartoon</div>
+                </div>
+                <span class="ch-num">68</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12417"
+                data-url="https://tvsen6.aynaott.com/boishakhitv/index.m3u8?e=1779283755&amp;u=78be6644-0a65-48ec-81a4-089ac65a2619&amp;token=f3f4ec98ffbd9567c21e8b2ee98e32d5"
+                data-name="Boishakhi TV"
+                data-cat="Bangladesh"
+                data-logo="https://i.ibb.co.com/sptqqqj9/Boishakhi-TV.png"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://i.ibb.co.com/sptqqqj9/Boishakhi-TV.png"
+                     alt="Boishakhi TV" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">Boishakhi TV</div>
+                    <div class="ch-cat">Bangladesh</div>
+                </div>
+                <span class="ch-num">69</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12418"
+                data-url="https://tvsen6.aynaott.com/banglatv/index.m3u8?e=1779283758&amp;u=78be6644-0a65-48ec-81a4-089ac65a2619&amp;token=f3e9e2737e35147900c0f4add619ead6"
+                data-name="Bangla Tv"
+                data-cat="Bangladesh"
+                data-logo="https://imglink.cc/cdn/YQ8D9Wf0IT.png"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://imglink.cc/cdn/YQ8D9Wf0IT.png"
+                     alt="Bangla Tv" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">Bangla Tv</div>
+                    <div class="ch-cat">Bangladesh</div>
+                </div>
+                <span class="ch-num">70</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12419"
+                data-url="https://tvsen6.aynaott.com/channeli/index.m3u8?e=1779283749&amp;u=78be6644-0a65-48ec-81a4-089ac65a2619&amp;token=1d2782c406bc6c9f853716c3dc41a439"
+                data-name="Channel I"
+                data-cat="Bangladesh"
+                data-logo="https://imglink.cc/cdn/H038J5LwdN.png"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://imglink.cc/cdn/H038J5LwdN.png"
+                     alt="Channel I" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">Channel I</div>
+                    <div class="ch-cat">Bangladesh</div>
+                </div>
+                <span class="ch-num">71</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12421"
+                data-url="https://owrcovcrpy.gpcdn.net/bpk-tv/1703/output/1703-audio_113332_eng=113200-video=2202800.m3u8"
+                data-name="Channel 24"
+                data-cat="Bangladesh"
+                data-logo="https://i.ibb.co.com/v65cfQ96/Channel-24.png"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://i.ibb.co.com/v65cfQ96/Channel-24.png"
+                     alt="Channel 24" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">Channel 24</div>
+                    <div class="ch-cat">Bangladesh</div>
+                </div>
+                <span class="ch-num">72</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12422"
+                data-url="https://owrcovcrpy.gpcdn.net/bpk-tv/1729/output/1729-audio_113592_eng=113200-video=1181200.m3u8"
+                data-name="Channel 9 HD"
+                data-cat="Bangladesh"
+                data-logo="https://i.ibb.co.com/Xxrdnxkp/Channel9-HD.png"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://i.ibb.co.com/Xxrdnxkp/Channel9-HD.png"
+                     alt="Channel 9 HD" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">Channel 9 HD</div>
+                    <div class="ch-cat">Bangladesh</div>
+                </div>
+                <span class="ch-num">73</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12423"
+                data-url="https://app.ncare.live/live-orgin/channels.stream/live-orgin/channels.stream/chunks.m3u8"
+                data-name="Channel S TV"
+                data-cat="Bangladesh"
+                data-logo="https://i.ibb.co.com/Vp2HKT0s/Channel-S-TV.png"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://i.ibb.co.com/Vp2HKT0s/Channel-S-TV.png"
+                     alt="Channel S TV" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">Channel S TV</div>
+                    <div class="ch-cat">Bangladesh</div>
+                </div>
+                <span class="ch-num">74</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12424"
+                data-url="https://owrcovcrpy.gpcdn.net/bpk-tv/1728/output/index.m3u8"
+                data-name="DBC News"
+                data-cat="Bangladesh"
+                data-logo="https://i.ibb.co.com/TMKLMXs9/DBC-News.png"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://i.ibb.co.com/TMKLMXs9/DBC-News.png"
+                     alt="DBC News" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">DBC News</div>
+                    <div class="ch-cat">Bangladesh</div>
+                </div>
+                <span class="ch-num">75</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12425"
+                data-url="https://byphdgllyk.gpcdn.net/hls/deeptotv/0_1/index.m3u8"
+                data-name="Deepto TV"
+                data-cat="Bangladesh"
+                data-logo="https://imglink.cc/cdn/2ODX-FAGY4.png"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://imglink.cc/cdn/2ODX-FAGY4.png"
+                     alt="Deepto TV" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">Deepto TV</div>
+                    <div class="ch-cat">Bangladesh</div>
+                </div>
+                <span class="ch-num">76</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12426"
+                data-url="https://tvsen6.aynaott.com/deshtv/tracks-v1a1/mono.ts.m3u8"
+                data-name="Desh TV"
+                data-cat="Bangladesh"
+                data-logo="https://i.ibb.co.com/fVH9h8Tk/Desh-TV.png"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://i.ibb.co.com/fVH9h8Tk/Desh-TV.png"
+                     alt="Desh TV" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">Desh TV</div>
+                    <div class="ch-cat">Bangladesh</div>
+                </div>
+                <span class="ch-num">77</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12427"
+                data-url="https://tvsen6.aynaott.com/ekhontv/tracks-v1a1/mono.ts.m3u8"
+                data-name="Ekhon TV"
+                data-cat="Bangladesh"
+                data-logo="https://i.ibb.co.com/YrDVpDt/Ekhon-Tv.png"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://i.ibb.co.com/YrDVpDt/Ekhon-Tv.png"
+                     alt="Ekhon TV" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">Ekhon TV</div>
+                    <div class="ch-cat">Bangladesh</div>
+                </div>
+                <span class="ch-num">78</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12428"
+                data-url="https://owrcovcrpy.gpcdn.net/bpk-tv/1705/output/1705.m3u8"
+                data-name="Ekattor TV HD"
+                data-cat="Bangladesh"
+                data-logo="https://i.ibb.co.com/DPZrfqzr/Ekattor-TV-HD.png"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://i.ibb.co.com/DPZrfqzr/Ekattor-TV-HD.png"
+                     alt="Ekattor TV HD" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">Ekattor TV HD</div>
+                    <div class="ch-cat">Bangladesh</div>
+                </div>
+                <span class="ch-num">79</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12429"
+                data-url="https://tvsen6.aynaott.com/etv/tracks-v1a1/mono.ts.m3u8"
+                data-name="Ekushe TV"
+                data-cat="Bangladesh"
+                data-logo="https://i.ibb.co.com/Myscx0rx/Ekushe-TV.png"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://i.ibb.co.com/Myscx0rx/Ekushe-TV.png"
+                     alt="Ekushe TV" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">Ekushe TV</div>
+                    <div class="ch-cat">Bangladesh</div>
+                </div>
+                <span class="ch-num">80</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12430"
+                data-url="https://app24.jagobd.com.bd/c3VydmVyX8RpbEU9Mi8xNy8yMFDEEHGcfRgzQ6NTAgdEoaeFzbF92YWxIZTO0U0ezN1IzMyfvcEdsEfeDeKiNkVN3PTOmdFseWRtaW51aiPhnPTI2/Global-tv.stream/tracks-v1a1/mono.m3u8"
+                data-name="Global TV"
+                data-cat="Bangladesh"
+                data-logo="https://i.ibb.co.com/Q7Q7X64N/Global-TV.png"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://i.ibb.co.com/Q7Q7X64N/Global-TV.png"
+                     alt="Global TV" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">Global TV</div>
+                    <div class="ch-cat">Bangladesh</div>
+                </div>
+                <span class="ch-num">81</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12431"
+                data-url="https://app24.jagobd.com.bd/c3VydmVyX8RpbEU9Mi8xNy8yMFDEEHGcfRgzQ6NTAgdEoaeFzbF92YWxIZTO0U0ezN1IzMyfvcEdsEfeDeKiNkVN3PTOmdFseWRtaW51aiPhnPTI2/gazibdz.stream/tracks-v1a1/mono.m3u8"
+                data-name="GTV"
+                data-cat="Bangladesh"
+                data-logo="https://i.ibb.co.com/cc5rftrN/Gazi-TV.png"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://i.ibb.co.com/cc5rftrN/Gazi-TV.png"
+                     alt="GTV" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">GTV</div>
+                    <div class="ch-cat">Bangladesh</div>
+                </div>
+                <span class="ch-num">82</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12432"
+                data-url="https://tvsen6.aynaott.com/independenttv/tracks-v1a1/mono.ts.m3u8"
+                data-name="Independent TV"
+                data-cat="Bangladesh"
+                data-logo="https://e7.pngegg.com/pngimages/500/179/png-clipart-bangladesh-logo-independent-television-television-channel-bd-logo-television-text-thumbnail.png"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+ <img src="https://e7.pngegg.com/pngimages/500/179/png-clipart-bangladesh-logo-independent-television-television-channel-bd-logo-television-text-thumbnail.png"
+                     alt="Independent TV" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">Independent TV</div>
+                    <div class="ch-cat">Bangladesh</div>
+                </div>
+                <span class="ch-num">83</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12433"
+                data-url="https://app.ncare.live/live-orgin/jagonews24.stream/live-orgin/jagonews24.stream/chunks.m3u8"
+                data-name="Jago News 24"
+                data-cat="Bangladesh"
+                data-logo="https://i.ibb.co.com/KpRt3cT5/Jago-News-24.png"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://i.ibb.co.com/KpRt3cT5/Jago-News-24.png"
+                     alt="Jago News 24" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">Jago News 24</div>
+                    <div class="ch-cat">Bangladesh</div>
+                </div>
+                <span class="ch-num">84</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12434"
+                data-url="https://tvsen6.aynaott.com/jamunatv/index.m3u8?e=1779283771&amp;u=78be6644-0a65-48ec-81a4-089ac65a2619&amp;token=2592d440f00d65738bd7f6c5158ce486"
+                data-name="Jamuna TV"
+                data-cat="Bangladesh"
+                data-logo="https://www.jamuna.tv/uploads/settings/default_img_1.jpg"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://www.jamuna.tv/uploads/settings/default_img_1.jpg"
+                     alt="Jamuna TV" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">Jamuna TV</div>
+                    <div class="ch-cat">Bangladesh</div>
+                </div>
+                <span class="ch-num">85</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12435"
+                data-url="https://owrcovcrpy.gpcdn.net/bpk-tv/1722/output/1722.m3u8"
+                data-name="Maasranga TV"
+                data-cat="Bangladesh"
+                data-logo="https://i.ibb.co.com/S7c6STRZ/Maasranga-TV.png"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://i.ibb.co.com/S7c6STRZ/Maasranga-TV.png"
+                     alt="Maasranga TV" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">Maasranga TV</div>
+                    <div class="ch-cat">Bangladesh</div>
+                </div>
+                <span class="ch-num">86</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12436"
+                data-url="https://app24.jagobd.com.bd/c3VydmVyX8RpbEU9Mi8xNy8yMFDEEHGcfRgzQ6NTAgdEoaeFzbF92YWxIZTO0U0ezN1IzMyfvcEdsEfeDeKiNkVN3PTOmdFseWRtaW51aiPhnPTI2/mohonatv.stream/tracks-v1a1/mono.m3u8"
+                data-name="Mohona TV"
+                data-cat="Bangladesh"
+                data-logo="https://i.ibb.co.com/Ndvm37Vr/Mohona-TV.png"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://i.ibb.co.com/Ndvm37Vr/Mohona-TV.png"
+                     alt="Mohona TV" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">Mohona TV</div>
+                    <div class="ch-cat">Bangladesh</div>
+                </div>
+                <span class="ch-num">87</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12437"
+                data-url="https://tvsen6.aynaott.com/mytv/index.m3u8?e=1779283760&amp;u=78be6644-0a65-48ec-81a4-089ac65a2619&amp;token=0a2ae0189a44e789d3fecffe5a474ec3"
+                data-name="My Tv"
+                data-cat="Bangladesh"
+                data-logo="https://imglink.cc/cdn/7T2-k2SePa.png"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://imglink.cc/cdn/7T2-k2SePa.png"
+                     alt="My Tv" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">My Tv</div>
+                    <div class="ch-cat">Bangladesh</div>
+                </div>
+                <span class="ch-num">88</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12438"
+                data-url="http://alvetv.com/moviebanglatv/8080/index.m3u8"
+                data-name="Movie Bangla"
+                data-cat="Bangladesh"
+                data-logo="https://imglink.cc/cdn/B1Dn0E5UKs.png"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://imglink.cc/cdn/B1Dn0E5UKs.png"
+                     alt="Movie Bangla" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">Movie Bangla</div>
+                    <div class="ch-cat">Bangladesh</div>
+                </div>
+                <span class="ch-num">89</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12439"
+                data-url="https://tvsen6.aynaott.com/nexustv/tracks-v1a1/mono.ts.m3u8"
+                data-name="Nexus TV"
+                data-cat="Bangladesh"
+                data-logo="https://i.ibb.co.com/d0hw38JN/Nexus-TV.png"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://i.ibb.co.com/d0hw38JN/Nexus-TV.png"
+                     alt="Nexus TV" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">Nexus TV</div>
+                    <div class="ch-cat">Bangladesh</div>
+                </div>
+                <span class="ch-num">90</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12443"
+                data-url="https://owrcovcrpy.gpcdn.net/bpk-tv/1710/output/1710-audio_113402_eng=113200-video=1181200.m3u8"
+                data-name="Star News"
+                data-cat="Bangladesh"
+                data-logo="https://i.ibb.co.com/cXTjmmtP/Star-News.png"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://i.ibb.co.com/cXTjmmtP/Star-News.png"
+                     alt="Star News" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">Star News</div>
+                    <div class="ch-cat">Bangladesh</div>
+                </div>
+                <span class="ch-num">91</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12445"
+                data-url="https://5dd3981940faa.streamlock.net:443/thikanatv/thikanatv/playlist.m3u8"
+                data-name="Thikana"
+                data-cat="Bangladesh"
+                data-logo="https://imglink.cc/cdn/rw8iAU9ZcB.jpg"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://imglink.cc/cdn/rw8iAU9ZcB.jpg"
+                     alt="Thikana" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">Thikana</div>
+                    <div class="ch-cat">Bangladesh</div>
+                </div>
+                <span class="ch-num">92</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12440"
+                data-url="https://owrcovcrpy.gpcdn.net/bpk-tv/1708/output/index.m3u8"
+                data-name="News 24"
+                data-cat="Bangladesh"
+                data-logo="https://i.ibb.co.com/gLx9fX5N/News-24.png"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://i.ibb.co.com/gLx9fX5N/News-24.png"
+                     alt="News 24" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">News 24</div>
+                    <div class="ch-cat">Bangladesh</div>
+                </div>
+                <span class="ch-num">93</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12444"
+                data-url="https://tvsen6.aynaott.com/satv/index.m3u8?e=1779283757&amp;u=78be6644-0a65-48ec-81a4-089ac65a2619&amp;token=336f19de5e4aacae753d7524d86d1a89"
+                data-name="SA Tv"
+                data-cat="Bangladesh"
+                data-logo="https://imglink.cc/cdn/qx2W3uKGsz.png"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://imglink.cc/cdn/qx2W3uKGsz.png"
+                     alt="SA Tv" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">SA Tv</div>
+                    <div class="ch-cat">Bangladesh</div>
+                </div>
+                <span class="ch-num">94</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12442"
+                data-url="https://tvsen6.aynaott.com/rtv/tracks-v1a1/mono.ts.m3u8"
+                data-name="RTV Live"
+                       data-cat="Bangladesh"
+                data-logo="https://imglink.cc/cdn/JZnibxXLfK.png"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://imglink.cc/cdn/JZnibxXLfK.png"
+                     alt="RTV Live" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">RTV Live</div>
+                    <div class="ch-cat">Bangladesh</div>
+                </div>
+                <span class="ch-num">95</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12441"
+                data-url="https://owrcovcrpy.gpcdn.net/bpk-tv/1716/output/1716-audio_113462_eng=113200-video=1181200.m3u8"
+                data-name="NTV"
+                data-cat="Bangladesh"
+                data-logo="https://imglink.cc/cdn/D8KxMc9soN.png"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://imglink.cc/cdn/D8KxMc9soN.png"
+                     alt="NTV" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">NTV</div>
+                    <div class="ch-cat">Bangladesh</div>
+                </div>
+                <span class="ch-num">96</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12446"
+                data-url="https://vg-republictvlive.akamaized.net/v1/manifest/611d79b11b77e2f571934fd80ca1413453772ac7/vglive-sk-456368/06e5afc2-a022-4e51-9131-4e33a6207c5c/1.m3u8"
+                data-name="Republic Bangla"
+                data-cat="News"
+                data-logo="https://imglink.cc/cdn/ndYg8AR85Y.jpg"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://imglink.cc/cdn/ndYg8AR85Y.jpg"
+                     alt="Republic Bangla" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">Republic Bangla</div>
+                    <div class="ch-cat">News</div>
+                </div>
+                <span class="ch-num">97</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12451"
+                data-url="https://autentic-adventure-earth-1-eu.rakuten.wurl.tv/playlist.m3u8"
+                data-name="Adventure Earth"
+                data-cat="Documentary"
+                data-logo="https://imglink.cc/cdn/eEZmseF3Tb.jpg"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://imglink.cc/cdn/eEZmseF3Tb.jpg"
+                     alt="Adventure Earth" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">Adventure Earth</div>
+                    <div class="ch-cat">Documentary</div>
+                </div>
+                <span class="ch-num">98</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12452"
+                data-url="https://amg00793-amg00793c6-xumo-us-2669.playouts.now.amagi.tv/BBCStudios-BBCEarthA-hls/playlist540p.m3u8"
+                data-name="BBC Earth"
+                data-cat="Documentary"
+                data-logo="https://imglink.cc/cdn/eEZmseF3Tb.jpg"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://imglink.cc/cdn/eEZmseF3Tb.jpg"
+                     alt="BBC Earth" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">BBC Earth</div>
+                    <div class="ch-cat">Documentary</div>
+                </div>
+                <span class="ch-num">99</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12454"
+                data-url="https://tiger-hub.vercel.app@vodzong.mjunoon.tv:8087/streamtest/Animal-Planet-158-3/playlist.m3u8"
+                data-name="Animal Planet"
+                data-cat="Documentary"
+                data-logo="https://imglink.cc/cdn/ebC033LNf2.png"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://imglink.cc/cdn/ebC033LNf2.png"
+                     alt="Animal Planet" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">Animal Planet</div>
+                    <div class="ch-cat">Documentary</div>
+                </div>
+                <span class="ch-num">100</span>
+            </div>
+                        <div class="ch-item"
+                data-id="12453"
+                data-url="https://wildearth-plex.amagi.tv/master.m3u8"
+                data-name="Wild Earth"
+                data-cat="Documentary"
+                data-logo="https://imglink.cc/cdn/eEZmseF3Tb.jpg"
+                draggable="true">
+                <span class="drag-handle" title="ড্র্যাগ করে সাজান">⠿</span>
+                <img src="https://imglink.cc/cdn/eEZmseF3Tb.jpg"
+                     alt="Wild Earth" class="ch-logo"
+                     onerror="this.src='https://placehold.co/48x48/111827/6b7280?text=TV'"
+                     draggable="false">
+                <div class="ch-info">
+                    <div class="ch-name">Wild Earth</div>
+                    <div class="ch-cat">Documentary</div>
+                </div>
+                <span class="ch-num">101</span>
+            </div>
+                                </div>
+    </div>
+</div>
+
+<footer>
+    <div class="credit">
+        © 2026 <strong>CodeCloudBD Stream</strong>
+         — All rights reserved |
+        <a href="https://codecloud.bd" target="_blank">CodeCloud BD</a>
+    </div>
+    <div class="visit-stats">
+        <div class="visit-badge"><span class="dot-gold"></span> Total Visit: <strong id="totalVisit">26,404</strong></div>
+        <div class="visit-badge"><span class="dot-green"></span> Now Online: <strong id="nowOnline">62</strong></div>
+    </div>
+    <div class="ch-count">📡 101 Channels</div>
+</footer>
+
+<script>
+// ── Config ──────────────────────────────────────────────────
+const AD_ENABLED  = false;
+const AD_INTERVAL = 30 * 1000;
+const AD_DURATION = 15 * 1000;
+
+const video       = document.getElementById('videoPlayer');
+const wrap        = document.getElementById('playerWrap');
+const ctrlOverlay = document.getElementById('ctrlOverlay');
+const iconPlay    = document.getElementById('iconPlay');
+const iconPause   = document.getElementById('iconPause');
+const iconEnterFS = document.getElementById('iconEnterFS');
+const iconExitFS  = document.getElementById('iconExitFS');
+const fsBtnText   = document.getElementById('fsBtnText');
+let   hls         = null;
+let   videoLoaded = false;
+
+// ── Controls auto-hide ───────────────────────────────────────
+let ctrlTimer = null;
+
+function showControls() {
+    ctrlOverlay.classList.add('visible');
+    clearTimeout(ctrlTimer);
+    ctrlTimer = setTimeout(hideControls, 5000);
+}
+function hideControls() {
+    ctrlOverlay.classList.remove('visible');
+}
+
+// tap/click on wrap: toggle controls (skip if clicking a button)
+// Mobile এ touchstart এর পরে click ও fire হয় — lastTouchTime দিয়ে সেটা skip করা হচ্ছে
+let lastTouchTime = 0;
+
+wrap.addEventListener('touchstart', e => {
+    if (e.target.closest('.ctrl-playpause') || e.target.closest('.ctrl-btn')) return;
+    if (!videoLoaded) return;
+    lastTouchTime = Date.now();
+    ctrlOverlay.classList.contains('visible') ? (hideControls(), clearTimeout(ctrlTimer)) : showControls();
+}, { passive: true });
+
+wrap.addEventListener('click', e => {
+    if (e.target.closest('.ctrl-playpause') || e.target.closest('.ctrl-btn')) return;
+    if (!videoLoaded) return;
+    // touch এর ৪০০ms এর মধ্যে আসা click ignore করো
+    if (Date.now() - lastTouchTime < 400) return;
+    ctrlOverlay.classList.contains('visible') ? (hideControls(), clearTimeout(ctrlTimer)) : showControls();
+});
+// desktop: show on mouse move
+wrap.addEventListener('mousemove', () => { if (videoLoaded) showControls(); });
+
+// ── Play / Pause ─────────────────────────────────────────────
+function syncPlayIcon() {
+    iconPlay.style.display  = video.paused ? '' : 'none';
+    iconPause.style.display = video.paused ? 'none' : '';
+}
+video.addEventListener('play',  syncPlayIcon);
+video.addEventListener('pause', syncPlayIcon);
+
+function togglePlayPause(e) {
+    e.stopPropagation();
+    if (!videoLoaded) return;
+    video.paused ? video.play().catch(()=>{}) : video.pause();
+    showControls();
+}
+
+// ── Fullscreen + mobile landscape ───────────────────────────
+function toggleFS(e) {
+    if (e) e.stopPropagation();
+    const isFS = !!(document.fullscreenElement || document.webkitFullscreenElement);
+    if (!isFS) {
+        const req = wrap.requestFullscreen || wrap.webkitRequestFullscreen || wrap.mozRequestFullScreen || wrap.msRequestFullscreen;
+        if (req) req.call(wrap);
+        // Mobile: auto landscape
+        if (screen.orientation && screen.orientation.lock) {
+            screen.orientation.lock('landscape').catch(() => {});
+        }
+    } else {
+        const ex = document.exitFullscreen || document.webkitExitFullscreen || document.mozCancelFullScreen || document.msExitFullscreen;
+        if (ex) ex.call(document);
+        if (screen.orientation && screen.orientation.unlock) screen.orientation.unlock();
+    }
+    showControls();
+}
+
+function onFSChange() {
+    const isFS = !!(document.fullscreenElement || document.webkitFullscreenElement);
+    iconEnterFS.style.display = isFS ? 'none' : '';
+    iconExitFS.style.display  = isFS ? '' : 'none';
+    fsBtnText.textContent     = isFS ? 'Exit' : 'FullScreen';
+    if (!isFS && screen.orientation && screen.orientation.unlock) screen.orientation.unlock();
+    showControls();
+}
+document.addEventListener('fullscreenchange',       onFSChange);
+document.addEventListener('webkitfullscreenchange', onFSChange);
+document.addEventListener('mozfullscreenchange',    onFSChange);
+document.addEventListener('MSFullscreenChange',     onFSChange);
+
+// ── Loading overlay ──────────────────────────────────────────
+const loadingOverlay = document.getElementById('loadingOverlay');
+const loadingLogo    = document.getElementById('loadingLogo');
+function showLoading(logo) { loadingLogo.src = logo; loadingOverlay.classList.add('show'); }
+function hideLoading()     { loadingOverlay.classList.remove('show'); }
+
+// ── Ad cycle ─────────────────────────────────────────────────
+let adTimer     = null;
+let adIntervalT = null;
+const playerAd      = document.getElementById('playerAd');
+const adCountdownEl = document.getElementById('adCountdown');
+const adTimerBar    = document.getElementById('adTimerBar');
+
+function showAd() {
+    if (!AD_ENABLED || !playerAd) return;
+    playerAd.classList.add('show');
+    let rem = AD_DURATION / 1000;
+    if (adCountdownEl) adCountdownEl.textContent = rem + 's';
+    if (adTimerBar) {
+        adTimerBar.style.transition = 'none';
+        adTimerBar.style.width = '100%';
+        requestAnimationFrame(() => {
+            adTimerBar.style.transition = `width ${AD_DURATION}ms linear`;
+            adTimerBar.style.width = '0%';
+        });
+    }
+    const tick = setInterval(() => {
+        rem--;
+        if (adCountdownEl) adCountdownEl.textContent = Math.max(rem, 0) + 's';
+        if (rem <= 0) clearInterval(tick);
+    }, 1000);
+    adTimer = setTimeout(() => { playerAd.classList.remove('show'); clearInterval(tick); }, AD_DURATION);
+}
+function startAdCycle() {
+    if (!AD_ENABLED) return;
+    stopAdCycle();
+    adIntervalT = setInterval(showAd, AD_INTERVAL);
+}
+function stopAdCycle() {
+    clearInterval(adIntervalT); clearTimeout(adTimer);
+    if (playerAd) playerAd.classList.remove('show');
+}
+
+// ── Channel play ─────────────────────────────────────────────
+function playChannel(el) {
+    document.querySelectorAll('.ch-item').forEach(i => i.classList.remove('active'));
+    el.classList.add('active');
+    const { url, name, cat, logo } = el.dataset;
+
+    document.getElementById('playerOverlay').style.display = 'none';
+    showLoading(logo);
+    videoLoaded = false;
+    hideControls(); clearTimeout(ctrlTimer);
+
+    const bar = document.getElementById('nowPlayingBar');
+    bar.classList.add('visible');
+    document.getElementById('npLogo').src = logo;
+    document.getElementById('npName').textContent = name;
+    document.getElementById('npCat').textContent  = cat;
+
+    stopAdCycle();
+    if (hls) { hls.destroy(); hls = null; }
+
+    function onReady() {
+        hideLoading();
+        videoLoaded = true;
+        video.play().catch(() => {});
+        syncPlayIcon();
+        showControls();
+        startAdCycle();
+    }
+
+    if (Hls.isSupported()) {
+        hls = new Hls({ enableWorker: true, lowLatencyMode: true });
+        hls.loadSource(url);
+        hls.attachMedia(video);
+        hls.on(Hls.Events.MANIFEST_PARSED, onReady);
+        hls.on(Hls.Events.ERROR, (e, data) => { if (data.fatal) hideLoading(); });
+    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+        video.src = url;
+        video.addEventListener('canplay', onReady, { once: true });
+        video.play().catch(() => {});
+    }
+}
+
+document.getElementById('channelList').addEventListener('click', e => {
+    const item = e.target.closest('.ch-item');
+    if (item && !e.target.classList.contains('drag-handle')) playChannel(item);
+});
+
+// ── Search & filter ──────────────────────────────────────────
+document.getElementById('searchInput').addEventListener('input', function() {
+    filterChannels(this.value.trim(), document.querySelector('.cat-tab.active')?.dataset.cat || 'all');
+});
+document.querySelectorAll('.cat-tab').forEach(btn => btn.addEventListener('click', function() {
+    document.querySelectorAll('.cat-tab').forEach(b => b.classList.remove('active'));
+    this.classList.add('active');
+    filterChannels(document.getElementById('searchInput').value.trim(), this.dataset.cat);
+}));
+function filterChannels(q, cat) {
+    let vis = 0;
+    document.querySelectorAll('.ch-item[data-id]').forEach(item => {
+        const ok = item.dataset.name.toLowerCase().includes(q.toLowerCase()) && (cat === 'all' || item.dataset.cat === cat);
+        item.style.display = ok ? '' : 'none';
+        if (ok) vis++;
+    });
+    const nr = document.querySelector('.no-results');
+    if (nr) nr.style.display = vis ? 'none' : '';
+}
+
+// ── Drag & drop sort ─────────────────────────────────────────
+let dragSrc = null;
+const list  = document.getElementById('channelList');
+list.addEventListener('dragstart', e => { dragSrc = e.target.closest('.ch-item[data-id]'); if (!dragSrc) return; dragSrc.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; });
+list.addEventListener('dragover',  e => { e.preventDefault(); const t = e.target.closest('.ch-item[data-id]'); if (!t || t === dragSrc) return; document.querySelectorAll('.ch-item').forEach(i=>i.classList.remove('drag-over')); t.classList.add('drag-over'); const r = t.getBoundingClientRect(); list.insertBefore(dragSrc, e.clientY > r.top + r.height/2 ? t.nextSibling : t); });
+list.addEventListener('dragend',   () => { if (!dragSrc) return; dragSrc.classList.remove('dragging'); document.querySelectorAll('.ch-item').forEach(i=>i.classList.remove('drag-over')); const order=[...list.querySelectorAll('.ch-item[data-id]')].map((el,i)=>({id:el.dataset.id,sort:i})); fetch('?save_order=1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(order)}); dragSrc=null; });
+let touchItem = null;
+list.addEventListener('touchstart', e => { const h=e.target.closest('.drag-handle'); if(!h) return; touchItem=h.closest('.ch-item'); e.preventDefault(); }, {passive:false});
+list.addEventListener('touchmove',  e => { if(!touchItem) return; e.preventDefault(); const y=e.touches[0].clientY; const els=[...list.querySelectorAll('.ch-item[data-id]')]; const t=els.find(el=>{const r=el.getBoundingClientRect(); return y>=r.top&&y<=r.bottom&&el!==touchItem;}); if(t){const r=t.getBoundingClientRect(); list.insertBefore(touchItem,y>r.top+r.height/2?t.nextSibling:t);} }, {passive:false});
+list.addEventListener('touchend',   () => { if(!touchItem) return; const order=[...list.querySelectorAll('.ch-item[data-id]')].map((el,i)=>({id:el.dataset.id,sort:i})); fetch('?save_order=1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(order)}); touchItem=null; });
+
+// ── Keyboard shortcuts ───────────────────────────────────────
+document.addEventListener('keydown', e => {
+    const a = document.querySelector('.ch-item.active');
+    if (e.code==='Space' && a)    { e.preventDefault(); togglePlayPause(e); }
+    if (e.code==='ArrowDown')     { e.preventDefault(); const n=a?.nextElementSibling; if(n?.dataset.id) playChannel(n); }
+    if (e.code==='ArrowUp')       { e.preventDefault(); const p=a?.previousElementSibling; if(p?.dataset.id) playChannel(p); }
+    if (e.key==='f'||e.key==='F') toggleFS(null);
+    if (e.key==='m'||e.key==='M') video.muted = !video.muted;
+    showControls();
+});
+
+// ── Ping ─────────────────────────────────────────────────────
+setInterval(() => {
+    fetch('?ping=1',{cache:'no-store'}).then(r=>r.json())
+    .then(d=>{if(d.online!==undefined)document.getElementById('nowOnline').textContent=d.online;}).catch(()=>{});
+}, 60000);
+</script>
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v833ccba57c9e4d2798f2e76cebdd09a11778172276447" integrity="sha512-57MDmcccJXYtNnH+ZiBwzC4jb2rvgVCEokYN+L/nLlmO8rfYT/gIpW2A569iJ/3b+0UEasghjuZH/ma3wIs/EQ==" data-cf-beacon='{"version":"2024.11.0","token":"a5bd855dcdfc45f6a61663406bc6a8e3","r":1,"server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
+</body>
+</html>
